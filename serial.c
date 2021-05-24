@@ -12,6 +12,20 @@ void showT(double **T, int NL, int NH, int n) {
 	}
 }
 
+void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER) {
+	FILE *fp = fopen(filename, "w+");
+	fprintf(fp, "%d %d %d\n", NL, NH, N_ITER); 
+	for (int n = 0; n < N_ITER; n++) {
+		for (int i = 0; i < NH; i++) {
+			for (int j = 0; j < NL; j++) {
+				fprintf(fp, "%f \t", T[n][i*NL+j]);
+			}
+			fprintf(fp, "\n");
+		}
+	}
+	fclose(fp);
+}
+
 int main() {
 	double L = 1.0; // length of the domain (x)
 	double H = 1.0; // height of the domain (y)
@@ -64,7 +78,7 @@ int main() {
 	
 
 	// showT(T, NL, NH, N_ITER - 1);
-
+	writeToFile("results_serial.txt", T, NL, NH, N_ITER);
 }
 
 
