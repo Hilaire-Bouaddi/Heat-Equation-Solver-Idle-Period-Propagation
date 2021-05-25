@@ -12,9 +12,9 @@ void showT(double **T, int NL, int NH, int n) {
 	}
 }
 
-void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER) {
+void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double dt) {
 	FILE *fp = fopen(filename, "w+");
-	fprintf(fp, "%d %d %d\n", NL, NH, N_ITER); 
+	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
 	for (int n = 0; n < N_ITER; n++) {
 		for (int i = 0; i < NH; i++) {
 			for (int j = 0; j < NL; j++) {
@@ -78,7 +78,7 @@ int main() {
 	
 
 	// showT(T, NL, NH, N_ITER - 1);
-	writeToFile("results_serial.txt", T, NL, NH, N_ITER);
+	writeToFile("results_serial.txt", T, NL, NH, N_ITER, dt);
 }
 
 
