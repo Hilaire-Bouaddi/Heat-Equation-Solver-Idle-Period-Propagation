@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <mpi.h>
+#include <math.h>
 
 #define INIT_T 100
 
@@ -26,59 +28,46 @@ void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double 
 	fclose(fp);
 }
 
-int main() {
+int main(int argc, char **argv) {
 	double L = 1.0; // length of the domain (x)
 	double H = 1.0; // height of the domain (y)
 
-	double h = 0.1; // distance between 2 points
+	double h = 0.01; // distance between 2 points
 	int NL = L/h;
 	int NH = H/h;
 	int N = NL*NH; // number of points 
 
-	double dt = 0.1; // in seconds
-	int T_MAX = 20; // time when the simulation ends
+	double dt = 0.01; // in seconds
+	int T_MAX = 5; // time when the simulation ends
 	int N_ITER = T_MAX/dt;
 
-	double k = 1E-3; // diffusion coefficient
+	double k = 2E-3; // diffusion coefficient
 
-	printf("---------------\n");
-	printf("RUNNING THE SIMULATION WITH:\nL = %fm\nH = %fm\nh = %fm\ndt = %fs\nT_MAX = %ds\nk = %fm^2/s\n", L, H, h, dt, T_MAX, k); 
-	printf("---------------\n");
-	
-	// allocation
-	double **T = malloc(N_ITER*sizeof(double)); // theta
-	for (int n = 0; n < N_ITER; n++) 
-		T[n] = malloc(N * sizeof(double));
 
-	// initializing the borders to INIT_T degrees
-	for (int n = 0; n < N_ITER; n++) {
-		for (int i=0; i < NL; i++) {
-			T[n][i] = INIT_T;
-	       		T[n][N - i - 1] = INIT_T;
-		}	       
-		for (int i=0; i < NH; i++) {
-			T[n][i*NL] = INIT_T;
-			T[n][(i+1)*NL - 1] = INIT_T;
-		}
+	// setting up MPI	
+	int provided, rank, size;
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	if (rank == 0) {
+		printf("---------------\n");
+		printf("RUNNING THE SIMULATION WITH:\nL = %fm\nH = %fm\nh = %fm\ndt = %fs\nT_MAX = %ds\nk = %fm^2/s\n", L, H, h, dt, T_MAX, k); 
+		printf("---------------\n");
 	}
 
-	// check initialization 
-	// showT(T, NL, NH, 0);
+	// let's try to see how we can divide the domain 
+	// we will assume that NL == NH == sqrt(N) 
 
-	for (int n = 0; n < N_ITER - 1; n++) {
-		for (int j = 1; j < NH - 1; j++) {
-			for (int i = 1; i < NL - 1; i++) {
-					T[n+1][i + j*NL] = T[n][i + j*NL] + k * dt * ( \
-							   (T[n][i+1 + j*NL] - 2*T[n][i + j*NL] + T[n][i - 1 + j*NL]) / h/h + \
-							   (T[n][i + (j+1)*NL] - 2*T[n][i + j*NL] + T[n][i + (j-1)*NL]) / h/h \
-							);
-			}		
-		}
-	}
+ 	// creating the cartesian communicator
+	MPI_Comm cart_comm;
+	int dims[] = {floor(sqrt(size)), floor(sqrt(size))};
+	int periods[] = {0, 0};
+	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &cart_comm);
 	
 
 	// showT(T, NL, NH, N_ITER - 1);
-	writeToFile("results_serial.txt", T, NL, NH, N_ITER, dt);
+	// writeToFile("results_parallel.txt", T, NL, NH, N_ITER, dt);
 }
 
 
