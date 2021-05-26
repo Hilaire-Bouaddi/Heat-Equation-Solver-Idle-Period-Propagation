@@ -27,24 +27,26 @@ void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double 
 }
 
 int main() {
-	double L = 1.0; // length of the domain (x)
-	double H = 1.0; // height of the domain (y)
+	double L = 5.0; // length of the domain (x)
+	double H = 5.0; // height of the domain (y)
 
-	double h = 0.1; // distance between 2 points
+	double h = 0.001; // distance between 2 points
 	int NL = L/h;
 	int NH = H/h;
 	int N = NL*NH; // number of points 
 
 	double dt = 0.1; // in seconds
-	int T_MAX = 20; // time when the simulation ends
+	int T_MAX = 5; // time when the simulation ends
 	int N_ITER = T_MAX/dt;
 
-	double k = 1E-3; // diffusion coefficient
+	double k = 2E-3; // diffusion coefficient
 
 	printf("---------------\n");
 	printf("RUNNING THE SIMULATION WITH:\nL = %fm\nH = %fm\nh = %fm\ndt = %fs\nT_MAX = %ds\nk = %fm^2/s\n", L, H, h, dt, T_MAX, k); 
 	printf("---------------\n");
-	
+
+	//gettimeofday
+
 	// allocation
 	double **T = malloc(N_ITER*sizeof(double)); // theta
 	for (int n = 0; n < N_ITER; n++) 
@@ -77,8 +79,9 @@ int main() {
 	}
 	
 
+
 	// showT(T, NL, NH, N_ITER - 1);
-	writeToFile("results_serial.txt", T, NL, NH, N_ITER, dt);
+	// writeToFile("results_serial.txt", T, NL, NH, N_ITER, dt);
 }
 
 
