@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
 #include <stdlib.h>
-
+#include <sys/time.h>
 #define INIT_T 100
 
 void showT(double **T, int NL, int NH, int n) {
@@ -12,31 +14,43 @@ void showT(double **T, int NL, int NH, int n) {
 	}
 }
 
+// this function will only print enough data to generate gifs of 24 fps
 void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double dt) {
+	bool write = true;
+	double count = 0;
 	FILE *fp = fopen(filename, "w+");
 	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
 	for (int n = 0; n < N_ITER; n++) {
-		for (int i = 0; i < NH; i++) {
-			for (int j = 0; j < NL; j++) {
-				fprintf(fp, "%f \t", T[n][i*NL+j]);
+		if (write) { 
+			for (int i = 0; i < NH; i++) {
+				for (int j = 0; j < NL; j++) {
+					fprintf(fp, "%f \t", T[n][i*NL+j]);
+				}
+				fprintf(fp, "\n");
 			}
-			fprintf(fp, "\n");
+			write = false;
+			count = 0;
+		} 
+		count += dt;
+		if (count > 1.0/24.0) {
+			write = true;
 		}
+		
 	}
 	fclose(fp);
 }
 
-int main() {
-	double L = 5.0; // length of the domain (x)
-	double H = 5.0; // height of the domain (y)
+int main(int argc, char** argv) {
+	double L = 2.0; // length of the domain (x)
+	double H = 2.0; // height of the domain (y)
 
-	double h = 0.001; // distance between 2 points
+	double h = 0.01; // distance between 2 points
 	int NL = L/h;
 	int NH = H/h;
 	int N = NL*NH; // number of points 
 
-	double dt = 0.1; // in seconds
-	int T_MAX = 5; // time when the simulation ends
+	double dt = 0.01; // in seconds
+	int T_MAX = 15; // time when the simulation ends
 	int N_ITER = T_MAX/dt;
 
 	double k = 2E-3; // diffusion coefficient
@@ -44,8 +58,10 @@ int main() {
 	printf("---------------\n");
 	printf("RUNNING THE SIMULATION WITH:\nL = %fm\nH = %fm\nh = %fm\ndt = %fs\nT_MAX = %ds\nk = %fm^2/s\n", L, H, h, dt, T_MAX, k); 
 	printf("---------------\n");
-
-	//gettimeofday
+	
+	struct timeval t0, t1;
+	//time_t t0, t1;
+	gettimeofday(&t0, 0);
 
 	// allocation
 	double **T = malloc(N_ITER*sizeof(double)); // theta
@@ -79,9 +95,14 @@ int main() {
 	}
 	
 
+	gettimeofday(&t1, 0);
+	long elapsed = (t1.tv_sec-t0.tv_sec)*1000000 + t1.tv_usec-t0.tv_usec;
 
-	// showT(T, NL, NH, N_ITER - 1);
-	// writeToFile("results_serial.txt", T, NL, NH, N_ITER, dt);
+	printf("Time elapsed %fs\n", elapsed/1.0E6);
+
+	//showT(T, NL, NH, N_ITER - 1);
+	if (argc > 1 && strcmp(argv[1], "save") == 0)
+		writeToFile("results_serial.txt", T, NL, NH, N_ITER, dt);
 }
 
 
