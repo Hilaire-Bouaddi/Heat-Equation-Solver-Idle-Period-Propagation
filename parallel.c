@@ -17,25 +17,30 @@ void showT(double **T, int NL, int NH, int n, int *coords) {
 	}
 }
 
-// this function will only print enough data to generate gifs of 24 fps
+// this function will only print enough data to generate gifs of 24 fps and only on a grid of 100*100
 void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double dt) {
 	bool write = true;
-	double count = 0;
+	double count_t = 0;
+	int frequency_L = NL/100.0;
+	int frequency_H = NH/100.0;
 	FILE *fp = fopen(filename, "w+");
 	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
 	for (int n = 0; n < N_ITER; n++) {
 		if (write) { 
 			for (int i = 0; i < NH; i++) {
-				for (int j = 0; j < NL; j++) {
-					fprintf(fp, "%f \t", T[n][i*NL+j]);
+				if (i % frequency_H == 0) {
+					for (int j = 0; j < NL; j++) {
+						if (j % frequency_L == 0)
+							fprintf(fp, "%f \t", T[n][i*NL+j]);
+					}
+					fprintf(fp, "\n");
 				}
-				fprintf(fp, "\n");
 			}
 			write = false;
-			count = 0;
+			count_t = 0;
 		} 
-		count += dt;
-		if (count > 1.0/24.0) {
+		count_t += dt;
+		if (count_t > 1.0/24.0) {
 			write = true;
 		}
 		
@@ -44,16 +49,16 @@ void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double 
 }
 
 int main(int argc, char **argv) {
-	double L = 5.0; // length of the domain (x)
-	double H = 5.0; // height of the domain (y)
+	double L = 2.0; // length of the domain (x)
+	double H = 2.0; // height of the domain (y)
 
 	double h = 0.001; // distance between 2 points
 	int NL = L/h;
 	int NH = H/h;
 	int N = NL*NH; // number of points 
 
-	double dt = 0.1; // in seconds
-	int T_MAX = 1; // time when the simulation ends
+	double dt = 0.05; // in seconds
+	int T_MAX = 10; // time when the simulation ends
 	int N_ITER = T_MAX/dt;
 	double k = 2E-3; // diffusion coefficient
 
