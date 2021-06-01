@@ -6,6 +6,36 @@
 #include <stdbool.h>
 #define INIT_T 100
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <unistd.h>
+
+
+// Use the preprocessor so we know definitively that these are placed inline
+#define RDTSC_START()            \
+	__asm__ volatile("CPUID\n\t" \
+	                 "RDTSC\n\t" \
+       	                 "mov %%edx, %0\n\t" \
+      	                 "mov %%eax, %1\n\t" \
+    	                 : "=r" (start_hi), "=r" (start_lo) \
+      	                 :: "%rax", "%rbx", "%rcx", "%rdx");
+
+#define RDTSC_STOP()              \
+       	__asm__ volatile("RDTSCP\n\t" \
+	                 "mov %%edx, %0\n\t" \
+      	                 "mov %%eax, %1\n\t" \
+      	                 "CPUID\n\t" \
+      	                 : "=r" (end_hi), "=r" (end_lo) \
+       	                 :: "%rax", "%rbx", "%rcx", "%rdx");
+// Returns the elapsed time given the high and low bits of the start and stop time.
+uint64_t elapsed(uint32_t start_hi, uint32_t start_lo, uint32_t end_hi,   uint32_t end_lo)
+{
+       	uint64_t start = (((uint64_t)start_hi) << 32) | start_lo;
+	uint64_t end   = (((uint64_t)end_hi)   << 32) | end_lo;
+	return end-start;
+}
+
 // shows the temperature at the timestep n 
 void showT(double **T, int NL, int NH, int n, int *coords) {
 	printf("----------------------------\n%d %d\n", coords[0], coords[1]);
@@ -17,24 +47,19 @@ void showT(double **T, int NL, int NH, int n, int *coords) {
 	}
 }
 
-// this function will only print enough data to generate gifs of 24 fps and only on a grid of 100*100
+// this function will only print enough data to generate gifs of 24 fps
 void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double dt) {
 	bool write = true;
 	double count_t = 0;
-	int frequency_L = NL/100.0;
-	int frequency_H = NH/100.0;
 	FILE *fp = fopen(filename, "w+");
 	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
 	for (int n = 0; n < N_ITER; n++) {
 		if (write) { 
 			for (int i = 0; i < NH; i++) {
-				if (i % frequency_H == 0) {
-					for (int j = 0; j < NL; j++) {
-						if (j % frequency_L == 0)
-							fprintf(fp, "%f \t", T[n][i*NL+j]);
-					}
-					fprintf(fp, "\n");
+				for (int j = 0; j < NL; j++) {
+					fprintf(fp, "%f \t", T[n][i*NL+j]);
 				}
+				fprintf(fp, "\n");
 			}
 			write = false;
 			count_t = 0;
@@ -52,13 +77,13 @@ int main(int argc, char **argv) {
 	double L = 2.0; // length of the domain (x)
 	double H = 2.0; // height of the domain (y)
 
-	double h = 0.001; // distance between 2 points
+	double h = 0.01; // distance between 2 points
 	int NL = L/h;
 	int NH = H/h;
 	int N = NL*NH; // number of points 
 
-	double dt = 0.05; // in seconds
-	int T_MAX = 10; // time when the simulation ends
+	double dt = 0.01; // in seconds
+	int T_MAX = 5; // time when the simulation ends
 	int N_ITER = T_MAX/dt;
 	double k = 2E-3; // diffusion coefficient
 
@@ -70,6 +95,9 @@ int main(int argc, char **argv) {
 			save_results = true;
 		}
 	}
+
+	bool save_idle_times = true;
+	uint64_t *idle_times = malloc(sizeof(uint64_t) * (N_ITER - 1));
 
 	// setting up MPI	
 	int provided;
@@ -219,8 +247,15 @@ int main(int argc, char **argv) {
 			MPI_Isend(T_to_bottom, mL, MPI_DOUBLE, rank_bottom, 0, cart_comm, &requests[request_counter++]); 
 			MPI_Irecv(T_from_bottom, mL, MPI_DOUBLE, rank_bottom, 0, cart_comm, &requests[request_counter++]);
 		}
-
+		
+		// measure idle time
+		uint32_t start_hi=0, start_lo=0;
+		uint32_t   end_hi=0,   end_lo=0;
+		RDTSC_START();
 		MPI_Waitall(request_counter, requests, statuses);
+		RDTSC_STOP();
+		uint64_t e = elapsed(start_hi, start_lo, end_hi, end_lo);
+		idle_times[n] = e;
 	
 		// COMPUTATION
 		// inside of the tile
@@ -310,6 +345,20 @@ int main(int argc, char **argv) {
 
 	// showT(T, mL, mH, N_ITER-1, coords);	
 	
+	// saving idle times
+	char str_coords[10];
+	sprintf(str_coords, "%d,%d", coords[0], coords[1]);
+
+	char *filename = malloc(sizeof(char)*20);
+	filename = strcpy(filename, "idle_times_");
+	strcat(strcat(filename, str_coords), ".txt");
+	FILE *fp = fopen(filename, "w+");
+	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
+	for (int n = 0; n < N_ITER - 1; n++) {
+		fprintf(fp, "%ld ", idle_times[n]);	
+	}
+	fclose(fp);
+
 
 	// merging to be able to write to a file 
 	if (!save_results) return 0; // exit now if we don't want to save the results
