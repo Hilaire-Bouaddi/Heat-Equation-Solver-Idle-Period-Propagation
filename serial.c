@@ -86,10 +86,10 @@ int main(int argc, char** argv) {
 	for (int n = 0; n < N_ITER - 1; n++) {
 		for (int j = 1; j < NH - 1; j++) {
 			for (int i = 1; i < NL - 1; i++) {
-					T[n+1][i + j*NL] = T[n][i + j*NL] + k * dt * ( \
-							   (T[n][i+1 + j*NL] - 2*T[n][i + j*NL] + T[n][i - 1 + j*NL]) / h/h + \
-							   (T[n][i + (j+1)*NL] - 2*T[n][i + j*NL] + T[n][i + (j-1)*NL]) / h/h \
-							);
+				T[n+1][i + j*NL] = T[n][i + j*NL] + k * dt * ( \
+				   (T[n][i+1 + j*NL] - 2*T[n][i + j*NL] + T[n][i - 1 + j*NL]) / h/h + \
+				   (T[n][i + (j+1)*NL] - 2*T[n][i + j*NL] + T[n][i + (j-1)*NL]) / h/h \
+				);
 			}		
 		}
 	}
