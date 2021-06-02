@@ -49,24 +49,14 @@ void showT(double **T, int NL, int NH, int n, int *coords) {
 
 // this function will only print enough data to generate gifs of 24 fps
 void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double dt) {
-	bool write = true;
-	double count_t = 0;
 	FILE *fp = fopen(filename, "w+");
 	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
 	for (int n = 0; n < N_ITER; n++) {
-		if (write) { 
-			for (int i = 0; i < NH; i++) {
-				for (int j = 0; j < NL; j++) {
-					fprintf(fp, "%f \t", T[n][i*NL+j]);
-				}
-				fprintf(fp, "\n");
+		for (int i = 0; i < NH; i++) {
+			for (int j = 0; j < NL; j++) {
+				fprintf(fp, "%f \t", T[n][i*NL+j]);
 			}
-			write = false;
-			count_t = 0;
-		} 
-		count_t += dt;
-		if (count_t > 1.0/24.0) {
-			write = true;
+			fprintf(fp, "\n");
 		}
 		
 	}
@@ -349,8 +339,8 @@ int main(int argc, char **argv) {
 	char str_coords[10];
 	sprintf(str_coords, "%d,%d", coords[0], coords[1]);
 
-	char *filename = malloc(sizeof(char)*20);
-	filename = strcpy(filename, "idle_times_");
+	char *filename = malloc(sizeof(char)*30);
+	filename = strcpy(filename, "idle_times/coords_");
 	strcat(strcat(filename, str_coords), ".txt");
 	FILE *fp = fopen(filename, "w+");
 	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
