@@ -1,6 +1,11 @@
 import matplotlib.pyplot as plt 
 import numpy as np
 import sys
+import os 
+
+if not os.path.exists("frames_idle_times"):
+    os.makedirs("frames_idle_times")
+
 
 N_THREADS = int(sys.argv[1])
 k = np.sqrt(N_THREADS).astype(np.int64)

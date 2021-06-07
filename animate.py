@@ -2,6 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import imageio
+import os 
+
+if not os.path.exists("frames"):
+    os.makedirs("frames")
+
 
 with open(sys.argv[1]) as f:
     contents = f.read()
@@ -11,7 +16,7 @@ with open(sys.argv[1]) as f:
     dt = float(contents.splitlines()[0].split()[3])
 
     T = []
-    print(N_ITER) 
+
     for n in range(N_ITER):
         T_n = []
         for line in contents.splitlines()[NH*n+1:NH*(n+1)+1]:
