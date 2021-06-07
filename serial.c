@@ -3,8 +3,33 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <inttypes.h>
 #define INIT_T 100
 
+// Use the preprocessor so we know definitively that these are placed inline
+#define RDTSC_START()            \
+	__asm__ volatile("CPUID\n\t" \
+	                 "RDTSC\n\t" \
+       	                 "mov %%edx, %0\n\t" \
+      	                 "mov %%eax, %1\n\t" \
+    	                 : "=r" (start_hi), "=r" (start_lo) \
+      	                 :: "%rax", "%rbx", "%rcx", "%rdx");
+
+#define RDTSC_STOP()              \
+       	__asm__ volatile("RDTSCP\n\t" \
+	                 "mov %%edx, %0\n\t" \
+      	                 "mov %%eax, %1\n\t" \
+      	                 "CPUID\n\t" \
+      	                 : "=r" (end_hi), "=r" (end_lo) \
+       	                 :: "%rax", "%rbx", "%rcx", "%rdx");
+// Returns the elapsed time given the high and low bits of the start and stop time.
+uint64_t elapsed(uint32_t start_hi, uint32_t start_lo, uint32_t end_hi,   uint32_t end_lo)
+{
+       	uint64_t start = (((uint64_t)start_hi) << 32) | start_lo;
+	uint64_t end   = (((uint64_t)end_hi)   << 32) | end_lo;
+	return end-start;
+}
+	
 void showT(double **T, int NL, int NH, int n) {
 	for (int i = 0; i < NH; i++) {
 		for (int j = 0; j < NL; j++) {
@@ -55,13 +80,15 @@ int main(int argc, char** argv) {
 
 	double k = 2E-3; // diffusion coefficient
 
+	
 	printf("---------------\n");
 	printf("RUNNING THE SIMULATION WITH:\nL = %fm\nH = %fm\nh = %fm\ndt = %fs\nT_MAX = %ds\nk = %fm^2/s\n", L, H, h, dt, T_MAX, k); 
 	printf("---------------\n");
 	
-	struct timeval t0, t1;
-	//time_t t0, t1;
-	gettimeofday(&t0, 0);
+
+	uint32_t start_hi=0, start_lo=0;
+	uint32_t   end_hi=0,   end_lo=0;
+	RDTSC_START();
 
 	// allocation
 	double **T = malloc(N_ITER*sizeof(double)); // theta
@@ -95,10 +122,10 @@ int main(int argc, char** argv) {
 	}
 	
 
-	gettimeofday(&t1, 0);
-	long elapsed = (t1.tv_sec-t0.tv_sec)*1000000 + t1.tv_usec-t0.tv_usec;
-
-	printf("Time elapsed %fs\n", elapsed/1.0E6);
+	RDTSC_STOP();
+	uint64_t e = elapsed(start_hi, start_lo, end_hi, end_lo);	
+	printf("N_ITER * NH * NL = %d\n", N_ITER * NH * NL);  
+	printf("Time elapsed %f s\n", e/2.3e9);
 
 	//showT(T, NL, NH, N_ITER - 1);
 	if (argc > 1 && strcmp(argv[1], "save") == 0)

@@ -4,13 +4,16 @@
 #include <string.h>
 #include <math.h>
 #include <stdbool.h>
+
+#define PROCESSOR_CLOCK_SPEED 2.3E9
 #define INIT_T 100
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
 
 // Use the preprocessor so we know definitively that these are placed inline
 #define RDTSC_START()            \
@@ -63,51 +66,79 @@ void writeToFile(char *filename, double **T, int NL, int NH, int N_ITER, double 
 	fclose(fp);
 }
 
-int main(int argc, char **argv) {
-	double L = 2.0; // length of the domain (x)
-	double H = 2.0; // height of the domain (y)
+// this function checks the plausibility of the results: is the temperature increasing and always lower than the thermostat
+bool isPlausible(double **T, int N_ITER, int N) {
+	for (int n = 0; n < N_ITER; n++) {
+		for (int i = 0; i < N; i++) {
+			if (T[n][i] > INIT_T) 
+				return false;
+	
+			if (n > 1) {
+				if (T[n][i] < T[n-1][i])
+					return false;
+			}
+		}
+	}
 
-	double h = 0.01; // distance between 2 points
+	return true;
+}
+
+int main(int argc, char **argv) {
+	if (argc < 7) {
+		printf("Usage: parallel <L> <H> <h> <dt> <T_MAX> <k> [save_results] [save_idle_times]\n");
+		return 0;
+	}
+	
+	double L = strtod(argv[1], NULL); // length of the domain (x)
+	double H = strtod(argv[2], NULL); // height of the domain (y)
+
+	double h = strtod(argv[3], NULL); // distance between 2 points
 	int NL = L/h;
 	int NH = H/h;
 	int N = NL*NH; // number of points 
 
-	double dt = 0.01; // in seconds
-	int T_MAX = 5; // time when the simulation ends
+	double dt = strtod(argv[4], NULL); // in seconds
+	int T_MAX = strtol(argv[5], NULL, 10); // time when the simulation ends
 	int N_ITER = T_MAX/dt;
-	double k = 2E-3; // diffusion coefficient
+	double k = strtod(argv[6], NULL); // diffusion coefficient
 
+	bool save_idle_times = false, save_results = false;
 
 	// decide if we are going to save the results
-	bool save_results = false;
-	if (argc > 1) {
-		if (strcmp(argv[1], "save") == 0) {
+	for (int i = 7; i < argc; i++) {
+		if (strcmp(argv[i], "save_idle_times") == 0) {
+			save_idle_times = true;
+		}
+		if (strcmp(argv[i], "save_results") == 0) {
 			save_results = true;
 		}
 	}
-
-	bool save_idle_times = true;
+	
 	uint64_t *idle_times = malloc(sizeof(uint64_t) * (N_ITER - 1));
 
 	// setting up MPI	
 	int provided;
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
 	
-	double t1 = MPI_Wtime();
-
 	int rank_world, size;
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank_world);
 
+
 	if (rank_world == 0) {
 		printf("---------------\n");
 		printf("RUNNING THE SIMULATION WITH:\nL = %fm\nH = %fm\nh = %fm\ndt = %fs\nT_MAX = %ds\nk = %fm^2/s\n", L, H, h, dt, T_MAX, k); 
+		printf("N = %d\n", N);
 		printf("final size of matrix T = %.3fMB\n", sizeof(double)*N_ITER*N/1000000.0);
 		if (dt < 1/24.0) printf("size of matrix T with dt = 1/24s = %.3fMB\n", sizeof(double)*N_ITER*dt*24*N/1E6);
 		printf("---------------\n");
 		fflush(stdout);
 	}
 	
+	if (size > NH || size > NL) {
+		if (rank_world == 0) printf("grid too small for parallelization\n");
+		return 0;
+	}
 
 	// let's try to see how we can divide the domain 
 	// we will assume that NL == NH == sqrt(N) 
@@ -178,6 +209,14 @@ int main(int argc, char **argv) {
 	double *T_from_bottom = malloc(sizeof(double) * mL);
 	double *T_to_bottom = malloc(sizeof(double) * mL);
 
+
+	uint32_t start_hi=0, start_lo=0;
+	uint32_t   end_hi=0,   end_lo=0;
+
+	RDTSC_START();
+
+	uint32_t start_hi_copy=start_hi, start_lo_copy=start_lo;
+
 	for (int n = 0; n < N_ITER-1; n++) {
 		// halo to get the borders from neighboring threads 
 		
@@ -239,13 +278,16 @@ int main(int argc, char **argv) {
 		}
 		
 		// measure idle time
-		uint32_t start_hi=0, start_lo=0;
-		uint32_t   end_hi=0,   end_lo=0;
-		RDTSC_START();
-		MPI_Waitall(request_counter, requests, statuses);
-		RDTSC_STOP();
-		uint64_t e = elapsed(start_hi, start_lo, end_hi, end_lo);
-		idle_times[n] = e;
+		
+		if (save_idle_times) {
+			start_hi=0, start_lo=0;
+			end_hi=0,   end_lo=0;
+			RDTSC_START();
+			MPI_Waitall(request_counter, requests, statuses);
+			RDTSC_STOP();
+			uint64_t e = elapsed(start_hi, start_lo, end_hi, end_lo);
+			idle_times[n] = e;
+		}
 	
 		// COMPUTATION
 		// inside of the tile
@@ -328,30 +370,46 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	double t2 = MPI_Wtime();
+	end_hi=0;
+     	end_lo=0;
+	start_hi = start_hi_copy;
+	start_lo = start_lo_copy;
 
-	if (rank == 0) 
-		printf("time elapsed: %fs\n", t2-t1); 
-
-	// showT(T, mL, mH, N_ITER-1, coords);	
-	
-	// saving idle times
-	char str_coords[10];
-	sprintf(str_coords, "%d,%d", coords[0], coords[1]);
-
-	char *filename = malloc(sizeof(char)*30);
-	filename = strcpy(filename, "idle_times/coords_");
-	strcat(strcat(filename, str_coords), ".txt");
-	FILE *fp = fopen(filename, "w+");
-	fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
-	for (int n = 0; n < N_ITER - 1; n++) {
-		fprintf(fp, "%ld ", idle_times[n]);	
+	if (rank == 0) { 
+		RDTSC_STOP();
+		uint64_t elapsed_time = elapsed(start_hi, start_lo, end_hi, end_lo);
+		printf("time elapsed: %lf s\n", elapsed_time / PROCESSOR_CLOCK_SPEED ); 
+		fflush(stdout);
 	}
-	fclose(fp);
+	// showT(T, mL, mH, N_ITER-1, coords);	
 
+	// saving idle times
+	if (save_idle_times) {
+		struct stat st = {0};
+
+		if (stat("/idle_times", &st) == -1) {
+	    		mkdir("idle_times", 0700);
+		}
+
+		char str_coords[10];
+		sprintf(str_coords, "%d,%d", coords[0], coords[1]);
+	
+		char *filename = malloc(sizeof(char)*30);
+		filename = strcpy(filename, "idle_times/coords_");
+		strcat(strcat(filename, str_coords), ".txt");
+		FILE *fp = fopen(filename, "w+");
+		fprintf(fp, "%d %d %d %f\n", NL, NH, N_ITER, dt); 
+		for (int n = 0; n < N_ITER - 1; n++) {
+			fprintf(fp, "%ld ", idle_times[n]);	
+		}
+		fclose(fp);
+	}
+
+	if (!isPlausible(T, N_ITER, mH * mL)) 
+		printf("The simulation looks unstable. Consider lowering timestep\n");
 
 	// merging to be able to write to a file 
-	if (!save_results) return 0; // exit now if we don't want to save the results
+	if (!save_results) return 0;	
 	if (coords[0] == 0 && coords[1] == 0) {
 		double **final_T = malloc(sizeof(double*) * N_ITER);	
 		for (int n = 0; n < N_ITER; n++) {
@@ -375,7 +433,7 @@ int main(int argc, char **argv) {
 						MPI_Recv(m_recv, 2, MPI_INT, rank_recv, 0, cart_comm, &status);
 
 						double *T_tile = malloc(sizeof(double) * m_recv[0] * m_recv[1]);
-
+						
 						MPI_Recv(T_tile, m_recv[0] * m_recv[1], MPI_DOUBLE, rank_recv, 0, cart_comm, &status);
 
 						int start = coords_recv[0] * floor(NL/floor(sqrt(size))) + coords_recv[1]* floor(NH/floor(sqrt(size))) * NL;
@@ -390,7 +448,8 @@ int main(int argc, char **argv) {
 		}
 
 		//showT(final_T, NL, NH, N_ITER-1, coords);	
-		writeToFile("results_parallel.txt", final_T, NL, NH, N_ITER, dt);
+		if (save_results)
+			writeToFile("results_parallel.txt", final_T, NL, NH, N_ITER, dt);
 	} 
 	else {
 		int coords_send[] = {0, 0};
