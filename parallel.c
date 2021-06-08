@@ -283,7 +283,9 @@ int main(int argc, char **argv) {
 			start_hi=0, start_lo=0;
 			end_hi=0,   end_lo=0;
 			RDTSC_START();
-			MPI_Waitall(request_counter, requests, statuses);
+		}
+		MPI_Waitall(request_counter, requests, statuses);
+		if (save_idle_times) {
 			RDTSC_STOP();
 			uint64_t e = elapsed(start_hi, start_lo, end_hi, end_lo);
 			idle_times[n] = e;
